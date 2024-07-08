@@ -19,6 +19,7 @@
     "babel-preset-expo": "^11.0.12",
     "date-fns": "^3.6.0",
     "expo": "~51.0.17",
+    "expo-linear-gradient": "^13.0.2",
     "expo-secure-store": "~13.0.2",
     "expo-status-bar": "~1.12.1",
     "nativewind": "^2.0.11",
