@@ -6,6 +6,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as api from '../app/components/api';
 import { useAuth } from '../app/context/AuthContext';
 import axios from 'axios';
+import { format, subDays, subWeeks, subMonths, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 
 type Journal = {
     id: number;
@@ -34,6 +35,8 @@ const Home: React.FC = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [newJournal, setNewJournal] = useState({ title: '', content: '', category_id: '' });
     const [journalToUpdate, setJournalToUpdate] = useState<Journal | null>(null);
+    const [summaryPeriod, setSummaryPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+    const [summary, setSummary] = useState<{ [key: string]: number }>({});
 
     useEffect(() => {
         fetchData();
@@ -41,7 +44,8 @@ const Home: React.FC = () => {
 
     useEffect(() => {
         fetchJournals();
-    }, [selectedCategory]);
+        fetchSummary();
+    }, [selectedCategory, summaryPeriod]);
 
     useEffect(() => {
         if (journalToUpdate) {
@@ -61,6 +65,7 @@ const Home: React.FC = () => {
             setUser(userData);
             setCategories(categoriesData);
             await fetchJournals();
+            await fetchSummary();
         } catch (error) {
             console.error('Error fetching data:', error);
             handleAuthError(error);
@@ -79,6 +84,45 @@ const Home: React.FC = () => {
         }
     };
 
+    const fetchSummary = async () => {
+        try {
+            const journals = await api.fetchJournals();
+            const now = new Date();
+            let startDate, endDate;
+
+            switch (summaryPeriod) {
+                case 'daily':
+                    startDate = startOfDay(now);
+                    endDate = endOfDay(now);
+                    break;
+                case 'weekly':
+                    startDate = startOfWeek(now);
+                    endDate = endOfWeek(now);
+                    break;
+                case 'monthly':
+                    startDate = startOfMonth(now);
+                    endDate = endOfMonth(now);
+                    break;
+            }
+
+            const filteredJournals = journals.filter((journal: Journal) => {
+                const journalDate = new Date(journal.created_at);
+                return journalDate >= startDate && journalDate <= endDate;
+            });
+
+            const summaryCounts: { [key: string]: number } = {};
+            filteredJournals.forEach((journal: Journal) => {
+                const key = format(new Date(journal.created_at), 'yyyy-MM-dd');
+                summaryCounts[key] = (summaryCounts[key] || 0) + 1;
+            });
+
+            setSummary(summaryCounts);
+        } catch (error) {
+            console.error('Error fetching summary:', error);
+            handleAuthError(error);
+        }
+    };
+
     const handleSaveJournal = async () => {
         try {
             if (journalToUpdate) {
@@ -90,6 +134,7 @@ const Home: React.FC = () => {
             setNewJournal({ title: '', content: '', category_id: '' });
             setJournalToUpdate(null);
             fetchJournals();
+            fetchSummary();
         } catch (error) {
             console.error('Error saving journal:', error);
             handleAuthError(error);
@@ -105,6 +150,7 @@ const Home: React.FC = () => {
         try {
             await api.deleteJournal(id);
             fetchJournals();
+            fetchSummary();
         } catch (error) {
             console.error('Error deleting journal:', error);
             handleAuthError(error);
@@ -140,6 +186,37 @@ const Home: React.FC = () => {
         </View>
     );
 
+    const renderSummary = () => (
+        <View style={styles.summaryContainer}>
+            <Text style={styles.summaryTitle}>Journal Summary ({summaryPeriod})</Text>
+            <View style={styles.summaryPeriodPicker}>
+                <TouchableOpacity
+                    style={[styles.periodButton, summaryPeriod === 'daily' && styles.activePeriodButton]}
+                    onPress={() => setSummaryPeriod('daily')}
+                >
+                    <Text style={styles.periodButtonText}>Daily</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.periodButton, summaryPeriod === 'weekly' && styles.activePeriodButton]}
+                    onPress={() => setSummaryPeriod('weekly')}
+                >
+                    <Text style={styles.periodButtonText}>Weekly</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.periodButton, summaryPeriod === 'monthly' && styles.activePeriodButton]}
+                    onPress={() => setSummaryPeriod('monthly')}
+                >
+                    <Text style={styles.periodButtonText}>Monthly</Text>
+                </TouchableOpacity>
+            </View>
+            {Object.entries(summary).map(([date, count]) => (
+                <Text key={date} style={styles.summaryItem}>
+                    {format(new Date(date), 'MMM d, yyyy')}: {count} entries
+                </Text>
+            ))}
+        </View>
+    );
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -159,12 +236,14 @@ const Home: React.FC = () => {
 
             {showLogout && (
                 <View style={styles.logoutDropdown}>
-                    <Text style={styles.welcomeText}>Welcome {user?.first_name}</Text>
+                    <Text style={styles.welcomeText}>Welcome {user?.username}</Text>
                     <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
                         <Text style={styles.logoutText}>Logout</Text>
                     </TouchableOpacity>
                 </View>
             )}
+
+            {renderSummary()}
 
             <TouchableOpacity style={styles.addButton} onPress={() => {
                 setJournalToUpdate(null);
@@ -416,6 +495,44 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#666',
         marginTop: 5,
+    },
+    summaryContainer: {
+        backgroundColor: '#ffffff',
+        padding: 15,
+        margin: 20,
+        borderRadius: 10,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.22,
+        shadowRadius: 2.22,
+    },
+    summaryTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 10,
+    },
+    summaryPeriodPicker: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+    periodButton: {
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        borderRadius: 5,
+        backgroundColor: '#e0e0e0',
+    },
+    activePeriodButton: {
+        backgroundColor: '#2196F3',
+    },
+    periodButtonText: {
+        color: '#333',
+        fontWeight: 'bold',
+    },
+    summaryItem: {
+        fontSize: 14,
+        marginBottom: 5,
     },
 });
 

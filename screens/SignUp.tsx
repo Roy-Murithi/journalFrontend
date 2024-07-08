@@ -34,9 +34,8 @@ const SignUp = ({ navigation }: Props) => {
         if (result.error) {
             Alert.alert('Error', result.msg);
         } else {
-            Alert.alert('Success', 'Registration successful', [
-                { text: 'OK', onPress: () => navigation.navigate('Login') }
-            ]);
+            alert('Sign Up SuccessFul');
+            navigation.navigate('Login');
         }
     };
 
